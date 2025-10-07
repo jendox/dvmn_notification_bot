@@ -92,8 +92,8 @@ async def devman_long_poll(
         except httpx.ConnectError:
             logger.debug("httpx.ConnectError")
             await anyio.sleep(CONNECT_ERROR_SLEEP_TIMEOUT)
-        except httpx.HTTPError as e:
-            logger.error(f"HTTPError: {str(e)}")
+        except (httpx.HTTPError, ValueError) as e:
+            logger.error(f"Error: {str(e)}")
         except asyncio.CancelledError:
             logger.debug("Devman long polling отменено")
             queue.shutdown()
