@@ -1,40 +1,63 @@
+import argparse
+import asyncio
+import logging
 import os
 
 import anyio
-import httpx
+from dotenv import load_dotenv
 
-HTTPX_DEFAULT_TIMEOUT = 10.0
-HTTPX_READ_TIMEOUT = 90.0
+from devman import devman_long_poll
+from tg_bot import bot_polling
+
+load_dotenv()
+
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO,
+)
 
 
-def get_async_client(
-    api_token: str,
-    default_timeout: int = HTTPX_DEFAULT_TIMEOUT,
-    read_timeout: int = HTTPX_READ_TIMEOUT,
-) -> httpx.AsyncClient:
-    return httpx.AsyncClient(
-        base_url="https://dvmn.org/api",
-        headers={
-            f"Authorization": f"Token {api_token}",
-        },
-        timeout=httpx.Timeout(default_timeout, read=read_timeout)
+def parse_arguments():
+    parser = argparse.ArgumentParser(
+        description="Бот для уведомлений о проверке заданий на Devman",
+        epilog="Пример использования: python bot.py --chat_id 123456789",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
+
+    parser.add_argument(
+        "-c", "--chat_id",
+        type=str,
+        required=True,
+        help="ID чата в Telegram для отправки уведомлений"
+    )
+
+    return parser.parse_args()
+
+
+def get_env_vars() -> tuple[str, str]:
+    bot_token = os.getenv("BOT_TOKEN")
+    api_token = os.getenv("API_TOKEN")
+    if not all((bot_token, api_token)):
+        raise ValueError("Не найдены BOT_TOKEN и (или) API_TOKEN в переменных окружения")
+    return bot_token, api_token
 
 
 async def main():
-    client = get_async_client(os.getenv("API_TOKEN"), read_timeout=5)
-    timestamp: int | None = None
-    while True:
-        try:
-            params = {"timestamp": timestamp}
-            response = await client.get(url="/long_polling/", params=params)
-            response.raise_for_status()
-            data = response.json()
-            print(f"url: {response.url} data: {data}")
-            timestamp = int(data.get("timestamp_to_request"))
-        except httpx.ReadTimeout:
-            pass
+    try:
+        args = parse_arguments()
+        bot_token, api_token = get_env_vars()
+    except ValueError as e:
+        logging.error(str(e))
+        return
+    else:
+        attempts_queue = asyncio.Queue()
+        async with anyio.create_task_group() as tg:
+            tg.start_soon(devman_long_poll, api_token, attempts_queue)
+            tg.start_soon(bot_polling, bot_token, args.chat_id, attempts_queue)
 
 
 if __name__ == "__main__":
-    anyio.run(main)
+    try:
+        anyio.run(main)
+    except KeyboardInterrupt:
+        logging.info("Завершение работы")
