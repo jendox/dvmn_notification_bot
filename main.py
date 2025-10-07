@@ -5,7 +5,7 @@ import os
 import anyio
 from dotenv import load_dotenv
 
-from devman import devman_long_poll
+from devman import devman_long_poll, Attempt
 from tg_bot import bot_polling
 
 logger = logging.getLogger(__file__)
@@ -23,7 +23,7 @@ def get_env_vars() -> tuple[str, str, str]:
 async def main():
     try:
         bot_token, api_token, chat_id = get_env_vars()
-        attempts_queue = asyncio.Queue()
+        attempts_queue: asyncio.Queue[Attempt] = asyncio.Queue()
         async with anyio.create_task_group() as tg:
             tg.start_soon(devman_long_poll, api_token, attempts_queue)
             tg.start_soon(bot_polling, bot_token, chat_id, attempts_queue)

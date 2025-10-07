@@ -2,6 +2,7 @@ import asyncio
 from textwrap import dedent
 
 import telegram
+from telegram.constants import ParseMode
 
 from devman import Attempt
 
@@ -29,17 +30,19 @@ def format_review_message_html(attempt: Attempt) -> str:
 async def bot_polling(
     token: str,
     chat_id: str,
-    queue: asyncio.Queue
+    queue: asyncio.Queue[Attempt],
 ) -> None:
     bot = telegram.Bot(token)
     while True:
         try:
-            attempt: Attempt = await queue.get()
+            attempt = await queue.get()
             await bot.send_message(
                 chat_id=chat_id,
                 text=format_review_message_html(attempt),
-                parse_mode="HTML",
+                parse_mode=ParseMode.HTML,
                 disable_web_page_preview=True,
             )
         except asyncio.QueueShutDown:
             break
+        except asyncio.CancelledError:
+            pass
