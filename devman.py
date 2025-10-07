@@ -8,6 +8,8 @@ import anyio
 import httpx
 from pydantic import BaseModel, Field
 
+logger = logging.getLogger("devman_polling")
+
 HTTPX_DEFAULT_TIMEOUT = 10.0
 HTTPX_READ_TIMEOUT = 100.0
 CONNECT_ERROR_SLEEP_TIMEOUT = 5.0
@@ -78,7 +80,6 @@ async def devman_long_poll(
     api_token: str,
     queue: asyncio.Queue,
 ) -> None:
-    logger = logging.getLogger("devman_poll")
     client = get_async_client("https://dvmn.org/api", api_token)
     timestamp: float = 0.0
     while True:
@@ -95,7 +96,7 @@ async def devman_long_poll(
         except (httpx.HTTPError, ValueError) as e:
             logger.error(f"Error: {str(e)}")
         except asyncio.CancelledError:
-            logger.debug("Devman long polling отменено")
+            logger.debug("Devman long polling отменен")
             queue.shutdown()
             await client.aclose()
             break

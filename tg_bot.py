@@ -30,7 +30,7 @@ async def bot_polling(
     token: str,
     chat_id: str,
     queue: asyncio.Queue
-):
+) -> None:
     bot = telegram.Bot(token)
     while True:
         try:
