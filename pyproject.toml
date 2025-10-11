@@ -2,7 +2,7 @@
 name = "notification-bot"
 version = "0.1.0"
 description = "Devman Notification Bot"
-requires-python = ">=3.13"
+requires-python = "==3.13.*"
 dependencies = [
     "argparse>=1.4.0",
     "httpx>=0.28.1",
