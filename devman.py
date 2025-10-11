@@ -1,4 +1,3 @@
-import asyncio
 import logging
 from datetime import datetime
 from enum import Enum
@@ -6,12 +5,15 @@ from typing import Any
 
 import anyio
 import httpx
+from anyio.abc import ObjectSendStream
 from pydantic import BaseModel, Field
 
-logger = logging.getLogger("devman_polling")
+DEVMAN_LOGGER_NAME = "devman_polling"
+
+logger = logging.getLogger(DEVMAN_LOGGER_NAME)
 
 HTTPX_DEFAULT_TIMEOUT = 10.0
-HTTPX_READ_TIMEOUT = 100.0
+HTTPX_READ_TIMEOUT = 120.0
 CONNECT_ERROR_SLEEP_TIMEOUT = 5.0
 
 
@@ -66,21 +68,22 @@ def parse_response(data: dict[str, Any]) -> TimeoutResponse | FoundResponse:
     raise ValueError(f"Неподдерживаемый статус ответа: {status}")
 
 
-async def process_response(data: dict[str, Any], queue: asyncio.Queue[Attempt]) -> float:
+async def process_response(data: dict[str, Any], stream: ObjectSendStream[Attempt]) -> float:
     response = parse_response(data)
     if response.status == Status.TIMEOUT:
         return response.timestamp_to_request
     else:
         for attempt in response.new_attempts:
-            await queue.put(attempt)
+            await stream.send(attempt)
         return response.last_attempt_timestamp
 
 
 async def devman_long_poll(
     api_token: str,
-    queue: asyncio.Queue[Attempt],
+    stream: ObjectSendStream[Attempt],
 ) -> None:
     try:
+        logger.warning("Бот запущен")
         timestamp: float = 0.0
         while True:
             async with get_async_client("https://dvmn.org/api", api_token) as client:
@@ -88,15 +91,16 @@ async def devman_long_poll(
                     params = {"timestamp": timestamp} if timestamp else None
                     response = await client.get(url="/long_polling/", params=params)
                     response.raise_for_status()
-                    timestamp = await process_response(response.json(), queue)
+                    timestamp = await process_response(response.json(), stream)
                 except httpx.ReadTimeout:
                     logger.debug("httpx.ReadTimeout")
                 except httpx.ConnectError:
                     logger.debug("httpx.ConnectError")
                     await anyio.sleep(CONNECT_ERROR_SLEEP_TIMEOUT)
                 except (httpx.HTTPError, ValueError) as e:
-                    logger.error(f"Error: {str(e)}")
-    except asyncio.CancelledError:
-        logger.debug("Devman long polling отменен")
+                    logger.error(f"Ошибка: {str(e)}", exc_info=True)
+    except anyio.get_cancelled_exc_class():
+        logger.info("Отменено пользователем")
     finally:
-        queue.shutdown()
+        await stream.aclose()
+        logger.info("Бот остановлен")

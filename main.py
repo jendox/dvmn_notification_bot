@@ -1,14 +1,13 @@
-import asyncio
 import logging
 import os
+from queue import Queue
 
 import anyio
 from dotenv import load_dotenv
 
-from devman import devman_long_poll, Attempt
-from tg_bot import bot_polling
-
-logger = logging.getLogger(__file__)
+from devman import devman_long_poll
+from logs import setup_logging
+from tg_bot import TelegramBot
 
 
 def get_env_vars() -> tuple[str, str, str]:
@@ -23,21 +22,23 @@ def get_env_vars() -> tuple[str, str, str]:
 async def main():
     try:
         bot_token, api_token, chat_id = get_env_vars()
-        attempts_queue: asyncio.Queue[Attempt] = asyncio.Queue()
+        attempts_send, attempts_recv = anyio.create_memory_object_stream()
+        logs_queue = Queue()
+
+        bot = TelegramBot(bot_token, chat_id)
+        setup_logging(logs_queue)
+
         async with anyio.create_task_group() as tg:
-            tg.start_soon(devman_long_poll, api_token, attempts_queue)
-            tg.start_soon(bot_polling, bot_token, chat_id, attempts_queue)
+            tg.start_soon(bot.logs_polling, logs_queue)
+            tg.start_soon(bot.attempts_polling, attempts_recv)
+            tg.start_soon(devman_long_poll, api_token, attempts_send)
     except ValueError as e:
-        logger.error(str(e))
+        logging.error(str(e))
         return
 
 
 if __name__ == "__main__":
     load_dotenv()
-    logging.basicConfig(
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-        level=logging.WARNING,
-    )
     try:
         anyio.run(main)
     except KeyboardInterrupt:
