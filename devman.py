@@ -83,7 +83,7 @@ async def devman_long_poll(
     stream: ObjectSendStream[Attempt],
 ) -> None:
     try:
-        logger.warning("Бот запущен")
+        logger.info("Бот запущен")
         timestamp: float = 0.0
         while True:
             async with get_async_client("https://dvmn.org/api", api_token) as client:
