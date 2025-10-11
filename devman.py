@@ -44,6 +44,10 @@ class FoundResponse(BaseResponse):
     last_attempt_timestamp: float
 
 
+class ResponseStatusError(Exception):
+    """Неподдерживаемый статус ответа"""
+
+
 def get_async_client(
     base_url: str,
     api_token: str,
@@ -53,7 +57,7 @@ def get_async_client(
     return httpx.AsyncClient(
         base_url=base_url,
         headers={
-            f"Authorization": f"Token {api_token}",
+            "Authorization": f"Token {api_token}",
         },
         timeout=httpx.Timeout(default_timeout, read=read_timeout)
     )
@@ -65,7 +69,7 @@ def parse_response(data: dict[str, Any]) -> TimeoutResponse | FoundResponse:
         return TimeoutResponse(**data)
     elif status == Status.FOUND.value:
         return FoundResponse(**data)
-    raise ValueError(f"Неподдерживаемый статус ответа: {status}")
+    raise ResponseStatusError(f"Неподдерживаемый статус ответа: {status}")
 
 
 async def process_response(data: dict[str, Any], stream: ObjectSendStream[Attempt]) -> float:
@@ -97,7 +101,7 @@ async def devman_long_poll(
                 except httpx.ConnectError:
                     logger.debug("httpx.ConnectError")
                     await anyio.sleep(CONNECT_ERROR_SLEEP_TIMEOUT)
-                except (httpx.HTTPError, ValueError) as e:
+                except (httpx.HTTPError, ResponseStatusError) as e:
                     logger.error(f"Ошибка: {str(e)}", exc_info=True)
     except anyio.get_cancelled_exc_class():
         logger.info("Отменено пользователем")
